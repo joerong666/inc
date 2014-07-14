@@ -20,17 +20,17 @@
     char tm_s[LTL_BUF_SIZE]; \
     time(&t_); \
     strftime(tm_s, sizeof(tm_s), "%Y-%m-%d %H:%M:%S", localtime(&t_)); \
-    fprintf(stdout, "%s,%s,%s:%d,thread[%d],", tm_s, __FILE__, __func__, __LINE__, syscall(__NR_gettid)); \
-    fprintf(stdout, __VA_ARGS__); \
-    fprintf(stdout, "\n"); \
+    printf("%s,%s,%s:%d,thread[%ld],", tm_s, __FILE__, __func__, __LINE__, syscall(SYS_gettid)); \
+    printf(__VA_ARGS__); \
+    printf("\n"); \
 } while(0)
 
-#define log_trace log_wrap
-#define log_debug log_wrap
-#define log_info  log_wrap
-#define log_warn  log_wrap
-#define log_error log_wrap
-#define log_fatal log_wrap
+#define log_trace printf("[TRACE] "); log_wrap
+#define log_debug printf("[DEBUG] "); log_wrap
+#define log_info  printf("[INFO] ");  log_wrap
+#define log_warn  printf("[WARN] ");  log_wrap
+#define log_error printf("[ERROR] "); log_wrap
+#define log_fatal printf("[FATAL] "); log_wrap
 #endif
 
 #ifndef DEBUG
@@ -60,19 +60,22 @@ typedef enum { TRUE = 1, FALSE = 0} BOOL;
 #define BIG_BUF_SIZE 4096
 
 /* customized types */
-typedef i8_t  int8_t;
-typedef u8_t  uint8_t;
-typedef i16_t int16_t;
-typedef u16_t uint16_t;
-typedef i32_t int32_t;
-typedef u32_t uint32_t;
-typedef i64_t int64_t;
-typedef u64_t uint8_t;
+typedef int8_t   i8_t;
+typedef uint8_t  u8_t;
+typedef int16_t  i16_t;
+typedef uint16_t u16_t;
+typedef int32_t  i32_t;
+typedef uint32_t u32_t;
+typedef int64_t  i64_t;
+typedef uint8_t  u64_t;
 
 /* None operation */
 #define NOP 
 
-#define Snprintf(char *str, size_t size, const char *format, ...) do{ \
+#define PRErrFMT ",strerror(%d):%s"
+#define PRErrVAL errno, strerror(errno)
+
+#define Snprintf(str, size, ...) do{ \
     int c = snprintf(str, size, __VA_ARGS__); \
     if(c >= (int)size) { \
         log_warn("String truncated"); \
@@ -89,37 +92,52 @@ typedef u64_t uint8_t;
 #define L_ERROR  -5
 #define L_FATAL  -6
 
-#define LOG_MSG(er_no, ...)  do{ \
-    char buf[MID_BUF_SIZE], msg[MID_BUF_SIZE]; \
-    Snprintf(msg, sizeof(msg), __VA_ARGS__); \
-    Snprintf(buf, sizeof(buf), "msg:%s,strerror(%d):%s", msg, er_no > 0 ? er_no : 0, \
-            (er_no > 0) ? strerror(er_no) : ""); \
-    if(er_no == L_TRACE)      log_trace(buf); \
-    else if(er_no == L_DEBUG) {log_debug(buf); } \
-    else if(er_no == L_INFO)  {log_info(buf); } \
-    else if(er_no == L_WARN)  {log_warn(buf); } \
-    else if(er_no == L_ERROR) {log_error(buf);} \
-    else if(er_no == L_FATAL) {log_fatal(buf); abort();} \
-    else {log_error(buf);} \
+#define LOG_MSG(log_level, ...)  do{ \
+    if(log_level == L_TRACE)      {log_trace(__VA_ARGS__);} \
+    else if(log_level == L_DEBUG) {log_debug(__VA_ARGS__);} \
+    else if(log_level == L_INFO)  {log_info (__VA_ARGS__);} \
+    else if(log_level == L_WARN)  {log_warn (__VA_ARGS__);} \
+    else if(log_level == L_ERROR) {log_error(__VA_ARGS__);} \
+    else if(log_level == L_FATAL) {log_fatal(__VA_ARGS__);} \
+    else {log_error(__VA_ARGS__);} \
 }while(0)
 
-#define TRACE() LOG_MSG(L_TRACE)
-
-#define OP_OUT(op, er_no, ...)  do{ \
-    LOG_MSG(er_no, __VA_ARGS__); \
+#define OP_OUT(op, log_level, ...)  do{ \
+    LOG_MSG(log_level, __VA_ARGS__); \
     op; \
     goto _out; \
 }while(0)
 
-#define OP_OUT_IF_FAIL(expr, op, er_no, ...) do{ \
-    if(!(expr)) OP_OUT(op, er_no, __VA_ARGS__); \
+#define OP_OUT_IF_FAIL(expr, op, ...) do{ \
+    if(!(expr)) OP_OUT(op, L_ERROR, __VA_ARGS__); \
 }while(0)
 
-#define OP_IF_FAIL(expr, op, er_no, ...) do{ \
+#define OP_IF_FAIL(expr, op, ...) do{ \
     if(!(expr)) { \
-        LOG_MSG(er_no, __VA_ARGS__); \
+        LOG_MSG(L_ERROR, __VA_ARGS__); \
         op; \
     } \
+}while(0)
+
+#define OUT_IF_FAIL(expr, ...) OP_OUT_IF_FAIL(expr, NOP, __VA_ARGS__)
+
+#define LOG_IF_FAIL(expr, ...) do{ \
+    if(!(expr)) { \
+        LOG_MSG(L_ERROR, __VA_ARGS__); \
+    } \
+}while(0)
+
+#define ASSERT(expr, ...) do { \
+    if(!(expr)) { \
+        LOG_MSG(L_FATAL, "ASSERT Fail:"__VA_ARGS__); \
+        abort(); \
+    } \
+}while(0)
+
+#define TRACE(op, ...) do { \
+    log_trace("TRACE_BEGIN:"__VA_ARGS__); \
+    op; \
+    log_trace("TRACE_END:"__VA_ARGS__); \
 }while(0)
 
 /*******************************************************
@@ -146,14 +164,14 @@ typedef u64_t uint8_t;
 #define _malloc_  malloc
 #define _realloc_ realloc
 #define _free_    free
-#define Strdup strdup
-#define Strndup strndup
+#define _strdup_  strdup
+#define _strndup_ strndup
 #else
 #define _malloc_  malloc
 #define _realloc_ realloc
 #define _free_    free
-#define Strdup strdup
-#define Strndup strndup
+#define _strdup_  strdup
+#define _strndup_ strndup
 #endif
 
 #define INT_ARGS_NUM(...)  (sizeof((int[]){0, ##__VA_ARGS__})/sizeof(int)-1)
@@ -162,13 +180,25 @@ typedef u64_t uint8_t;
 
 #define Malloc(size) ({ \
     void *t = _malloc_(size); \
-    OP_IF_FAIL(t != NULL, abort(), errno, "Malloc fail"); \
+    OP_IF_FAIL(t != NULL, abort(), "Malloc fail"); \
     t; \
 })
     
 #define Realloc(p, size) ({ \
     void *t = _realloc_(p, size); \
-    OP_IF_FAIL(t != NULL, abort(), errno, "Realloc fail"); \
+    OP_IF_FAIL(t != NULL, abort(), "Realloc fail"); \
+    t; \
+})
+
+#define Strdup(p) ({ \
+    char *t = _strdup_(p); \
+    OP_IF_FAIL(t != NULL, abort(), "Strdup fail"); \
+    t; \
+})
+
+#define Strndup(p, size) ({ \
+    char *t = _strndup_(p, size); \
+    OP_IF_FAIL(t != NULL, abort(), "Strndup fail"); \
     t; \
 })
 
