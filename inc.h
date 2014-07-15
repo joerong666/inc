@@ -14,13 +14,15 @@
 #ifndef FOR_UNIT_TEST
 #include "log.h"
 #else
+
 /* Log function */
 #define log_wrap(...) do{ \
     time_t t_; \
+    struct tm lt; \
     char tm_s[LTL_BUF_SIZE]; \
     time(&t_); \
-    strftime(tm_s, sizeof(tm_s), "%Y-%m-%d %H:%M:%S", localtime(&t_)); \
-    printf("%s,%s,%s:%d,thread[%ld],", tm_s, __FILE__, __func__, __LINE__, syscall(SYS_gettid)); \
+    strftime(tm_s, sizeof(tm_s), "%Y-%m-%d %H:%M:%S", localtime_r(&t_, &lt)); \
+    printf("%s,%s:%d,thread[%ld],", tm_s, __FILE__, __LINE__, syscall(SYS_gettid)); \
     printf(__VA_ARGS__); \
     printf("\n"); \
 } while(0)
@@ -72,15 +74,44 @@ typedef uint8_t  u64_t;
 /* None operation */
 #define NOP 
 
-#define PRErrFMT ",strerror(%d):%s"
-#define PRErrVAL errno, strerror(errno)
+#define PRErrFMT    ",strerror(%d):%s"
+#define PRErrVAL    errno, strerror(errno)
+#define PRStrFMT    "size=%lu,str=%s"
+#define PRStrVAL(s) strlen(s),s
 
+/********************************************************
+** string operation
+*********************************************************/
 #define Snprintf(str, size, ...) do{ \
     int c = snprintf(str, size, __VA_ARGS__); \
     if(c >= (int)size) { \
         log_warn("String truncated"); \
     } \
 } while(0)
+
+#define CONCAT(dest, ...) \
+    char dest[SML_BUF_SIZE]; \
+    Snprintf(dest, sizeof(dest), __VA_ARGS__)
+
+#define CONCAT2(dest, size, ...) \
+    char dest[size]; \
+    Snprintf(dest, sizeof(dest), __VA_ARGS__)
+
+#define TRIM(s) ({ \
+    int len = strlen(s); \
+    if(len > 0 && (s[len - 1] == '\r' || s[len - 1] == '\n')) s[len - 1] = '\0'; \
+    if(len > 1 && (s[len - 2] == '\r' || s[len - 2] == '\n')) s[len - 2] = '\0'; \
+    s; \
+})
+
+#define SUBSTR(dest, src, len) \
+    char dest[SML_BUF_SIZE]; \
+    if(len >= sizeof(dest)) { \
+        log_fatal("substring len bigger than %lu", sizeof(dest)); \
+        abort(); \
+    } \
+    memcpy(dest, src, len); \
+    dest[len] = '\0' \
 
 /*******************************************************
 **  LOG
@@ -180,25 +211,25 @@ typedef uint8_t  u64_t;
 
 #define Malloc(size) ({ \
     void *t = _malloc_(size); \
-    OP_IF_FAIL(t != NULL, abort(), "Malloc fail"); \
+    ASSERT(t != NULL, "Malloc fail"); \
     t; \
 })
     
 #define Realloc(p, size) ({ \
     void *t = _realloc_(p, size); \
-    OP_IF_FAIL(t != NULL, abort(), "Realloc fail"); \
+    ASSERT(t != NULL, "Realloc fail"); \
     t; \
 })
 
 #define Strdup(p) ({ \
     char *t = _strdup_(p); \
-    OP_IF_FAIL(t != NULL, abort(), "Strdup fail"); \
+    ASSERT(t != NULL, "Strdup fail"); \
     t; \
 })
 
 #define Strndup(p, size) ({ \
     char *t = _strndup_(p, size); \
-    OP_IF_FAIL(t != NULL, abort(), "Strndup fail"); \
+    ASSERT(t != NULL, "Strndup fail"); \
     t; \
 })
 
