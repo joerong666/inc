@@ -1,6 +1,5 @@
 #ifndef _INC_H_
 #define _INC_H_
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -22,7 +21,7 @@
     char tm_s[LTL_BUF_SIZE]; \
     time(&t_); \
     strftime(tm_s, sizeof(tm_s), "%Y-%m-%d %H:%M:%S", localtime_r(&t_, &lt)); \
-    printf("%s,%s:%d,thread[%ld],", tm_s, __FILE__, __LINE__, syscall(SYS_gettid)); \
+    printf("%s,%s:%d,%s,thread[%ld],", tm_s, __FILE__, __LINE__, __func__, syscall(SYS_gettid)); \
     printf(__VA_ARGS__); \
     printf("\n"); \
 } while(0)
@@ -82,6 +81,9 @@ typedef uint8_t  u64_t;
 /********************************************************
 ** string operation
 *********************************************************/
+#define EMPTY ""
+#define SPACE " "
+
 #define Snprintf(str, size, ...) do{ \
     int c = snprintf(str, size, __VA_ARGS__); \
     if(c >= (int)size) { \
@@ -89,6 +91,7 @@ typedef uint8_t  u64_t;
     } \
 } while(0)
 
+/* concat to different buf each time */
 #define CONCAT(dest, ...) \
     char dest[SML_BUF_SIZE]; \
     Snprintf(dest, sizeof(dest), __VA_ARGS__)
@@ -96,6 +99,19 @@ typedef uint8_t  u64_t;
 #define CONCAT2(dest, size, ...) \
     char dest[size]; \
     Snprintf(dest, sizeof(dest), __VA_ARGS__)
+
+/* concat to the same temporary buf, available in the scope of function */
+#define TCONCAT(...) ({ \
+    char dest[SML_BUF_SIZE]; \
+    Snprintf(dest, sizeof(dest), __VA_ARGS__); \
+    dest; \
+})
+
+#define TCONCAT2(size, ...) ({ \
+    char dest[size]; \
+    Snprintf(dest, sizeof(dest), __VA_ARGS__); \
+    dest; \
+})
 
 #define TRIM(s) ({ \
     int len = strlen(s); \
@@ -165,11 +181,39 @@ typedef uint8_t  u64_t;
     } \
 }while(0)
 
-#define TRACE(op, ...) do { \
-    log_trace("TRACE_BEGIN:"__VA_ARGS__); \
-    op; \
-    log_trace("TRACE_END:"__VA_ARGS__); \
-}while(0)
+#define TRACE(call, ...) ({ \
+    char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
+    char *_s_ = #call; \
+    char *_t_ = index(_s_, '('); \
+    size_t _i_ = _t_ - _s_; \
+    memcpy(_c_, _s_, _i_); \
+    memcpy(_b_, _s_, _i_); \
+    _b_[_i_++] = ':'; \
+    Snprintf(&_b_[_i_], sizeof(_b_) - _i_, __VA_ARGS__); \
+    log_trace(_b_); \
+    call;\
+})
+
+#define CTRACE(call, ...) ({ \
+    ssize_t _r_ = 0; \
+    char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
+    int eno = errno; \
+    char *_s_ = #call; \
+    char *_t_ = index(_s_, '('); \
+    size_t _i_ = _t_ - _s_; \
+    memcpy(_c_, _s_, _i_); \
+    memcpy(_b_, _s_, _i_); \
+    _b_[_i_++] = ':'; \
+    Snprintf(&_b_[_i_], sizeof(_b_) - _i_, __VA_ARGS__); \
+    log_trace(_b_); \
+    if((_r_ = (call)) < 0) { \
+        eno = errno; \
+        if(eno > 0) { log_error("%s"PRErrFMT, _c_, PRErrVAL); } \
+        else{ log_error("%s", _c_); } \
+    } \
+    errno = eno; \
+    _r_; \
+})
 
 /*******************************************************
 **  atomic, lock free operation
