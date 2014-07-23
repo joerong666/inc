@@ -85,8 +85,8 @@ typedef uint8_t  u64_t;
 #define SPACE " "
 
 #define Snprintf(str, size, ...) do{ \
-    int c = snprintf(str, size, __VA_ARGS__); \
-    if(c >= (int)size) { \
+    int c = snprintf(str, (size), __VA_ARGS__); \
+    if(c >= (int)(size)) { \
         log_warn("String truncated"); \
     } \
 } while(0)
@@ -203,6 +203,7 @@ typedef uint8_t  u64_t;
     size_t _i_ = _t_ - _s_; \
     memcpy(_c_, _s_, _i_); \
     memcpy(_b_, _s_, _i_); \
+    _c_[_i_] = '\0'; \
     _b_[_i_++] = ':'; \
     Snprintf(&_b_[_i_], sizeof(_b_) - _i_, __VA_ARGS__); \
     log_trace(_b_); \
