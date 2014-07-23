@@ -100,7 +100,7 @@ typedef uint8_t  u64_t;
     char dest[size]; \
     Snprintf(dest, sizeof(dest), __VA_ARGS__)
 
-/* concat to the same temporary buf, available in the scope of function */
+/* concat to dynamic temporary buf, may pick the same buf address allocated before */
 #define TCONCAT(...) ({ \
     char dest[SML_BUF_SIZE]; \
     Snprintf(dest, sizeof(dest), __VA_ARGS__); \
@@ -149,6 +149,10 @@ typedef uint8_t  u64_t;
     else {log_error(__VA_ARGS__);} \
 }while(0)
 
+#define OUT_INIT() int _out_code_ = 0
+#define OUT_OK() (_out_code_ == 0)
+#define OUT_ER() (_out_code_ != 0)
+
 #define OP_OUT(op, log_level, ...)  do{ \
     LOG_MSG(log_level, __VA_ARGS__); \
     op; \
@@ -181,40 +185,58 @@ typedef uint8_t  u64_t;
     } \
 }while(0)
 
+/* 
+** opstr format like:
+** "opname(arg1, arg2) != -1"
+** or
+** "(rc = opname(arg1, arg2)) != -1"
+*/
+#define OPNAME(buf, opstr) do { \
+    char *t1 = index(opstr + 1, '('); \
+    char *t2 = index(opstr + 1, '='); \
+    if(t2 && t2 < t1) { \
+        memcpy(buf, t2 + 1, t1 - t2 - 1); \
+        buf[t1 - t2 - 1] = '\0'; \
+    } else { \
+        memcpy(buf, opstr, t1 - opstr); \
+        buf[t1 - opstr] = '\0'; \
+    } \
+} while(0)
+
 #define TRACE(call, ...) ({ \
     char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
-    char *_s_ = #call; \
-    char *_t_ = index(_s_, '('); \
-    size_t _i_ = _t_ - _s_; \
-    memcpy(_c_, _s_, _i_); \
-    memcpy(_b_, _s_, _i_); \
-    _b_[_i_++] = ':'; \
-    Snprintf(&_b_[_i_], sizeof(_b_) - _i_, __VA_ARGS__); \
+    OPNAME(_c_, #call); \
+    Snprintf(_b_, sizeof(_b_), "%s:", _c_); \
+    Snprintf(&_b_[strlen(_b_)], sizeof(_b_) - strlen(_b_), __VA_ARGS__); \
     log_trace(_b_); \
-    call;\
+    call; \
 })
 
-#define CTRACE(call, ...) ({ \
-    ssize_t _r_ = 0; \
+#define CALL(call, ...) ({ \
+    int _r_ = 1; \
     char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
     int eno = errno; \
-    char *_s_ = #call; \
-    char *_t_ = index(_s_, '('); \
-    size_t _i_ = _t_ - _s_; \
-    memcpy(_c_, _s_, _i_); \
-    memcpy(_b_, _s_, _i_); \
-    _c_[_i_] = '\0'; \
-    _b_[_i_++] = ':'; \
-    Snprintf(&_b_[_i_], sizeof(_b_) - _i_, __VA_ARGS__); \
+    OPNAME(_c_, #call); \
+    Snprintf(_b_, sizeof(_b_), "%s:", _c_); \
+    Snprintf(&_b_[strlen(_b_)], sizeof(_b_) - strlen(_b_), __VA_ARGS__); \
     log_trace(_b_); \
-    if((_r_ = (call)) < 0) { \
+    if(!(call)) { \
+        _r_ = 0; \
         eno = errno; \
-        if(eno > 0) { log_error("%s"PRErrFMT, _c_, PRErrVAL); } \
-        else{ log_error("%s", _c_); } \
+        if(eno > 0) { log_error("%s"PRErrFMT, _b_, PRErrVAL); } \
+        else{ log_error("%s", _b_); } \
     } \
     errno = eno; \
     _r_; \
 })
+
+#define CALL_OUT(call, ...) do { \
+    int r = CALL(call, __VA_ARGS__); \
+    if(!r) { \
+        _out_code_ = -1; \
+        goto _out; \
+    } \
+} while(0)
 
 /*******************************************************
 **  atomic, lock free operation
