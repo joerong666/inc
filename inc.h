@@ -43,16 +43,6 @@
 #endif
 #endif
 
-/* return code */
-typedef enum {
-    RC_ER = -1,
-    RC_OK = 0,
-    RC_FULL = 1,
-    RC_EMPTY = 2,
-    RC_NOT_FOUND = 3,
-    RC_EOF = 4
-} rc_t;
-
 typedef enum { TRUE = 1, FALSE = 0} BOOL;
 
 #define LTL_BUF_SIZE 64
@@ -81,9 +71,6 @@ typedef uint8_t  u64_t;
 /********************************************************
 ** string operation
 *********************************************************/
-#define EMPTY ""
-#define SPACE " "
-
 #define Snprintf(str, size, ...) do{ \
     int c = snprintf(str, (size), __VA_ARGS__); \
     if(c >= (int)(size)) { \
@@ -271,10 +258,6 @@ typedef uint8_t  u64_t;
 #define _strdup_  strdup
 #define _strndup_ strndup
 #endif
-
-#define INT_ARGS_NUM(...)  (sizeof((int[]){0, ##__VA_ARGS__})/sizeof(int)-1)
-
-#define ALLOC_BUF(p, ...) char p[INT_ARGS_NUM(__VA_ARGS__) ? __VA_ARGS__ : SML_BUF_SIZE]
 
 #define Malloc(size) ({ \
     void *t = _malloc_(size); \
