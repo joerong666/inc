@@ -139,29 +139,20 @@ typedef uint8_t  u64_t;
 #define OUT_INIT() int _out_code_ = 0
 #define OUT_OK() (_out_code_ == 0)
 #define OUT_ER() (_out_code_ != 0)
+#define OUT_SET(code) (_out_code_ = (code))
 
-#define OP_OUT(op, log_level, ...)  do{ \
-    LOG_MSG(log_level, __VA_ARGS__); \
-    op; \
-    goto _out; \
-}while(0)
-
-#define OP_OUT_IF_FAIL(expr, op, ...) do{ \
-    if(!(expr)) OP_OUT(op, L_ERROR, __VA_ARGS__); \
-}while(0)
-
-#define OP_IF_FAIL(expr, op, ...) do{ \
+#define CHK_OUT(expr, ...) do{ \
+    log_trace(__VA_ARGS__); \
     if(!(expr)) { \
+        OUT_SET(OUT_ER()); \
         LOG_MSG(L_ERROR, __VA_ARGS__); \
-        op; \
+        goto _out; \
     } \
 }while(0)
 
-#define OUT_IF_FAIL(expr, ...) OP_OUT_IF_FAIL(expr, NOP, __VA_ARGS__)
-
-#define LOG_IF_FAIL(expr, ...) do{ \
+#define LOG_IF_FAIL(expr, log_level, ...) do{ \
     if(!(expr)) { \
-        LOG_MSG(L_ERROR, __VA_ARGS__); \
+        LOG_MSG(log_level, __VA_ARGS__); \
     } \
 }while(0)
 
@@ -179,14 +170,14 @@ typedef uint8_t  u64_t;
 ** "(rc = opname(arg1, arg2)) != -1"
 */
 #define OPNAME(buf, opstr) do { \
-    char *t1 = index(opstr + 1, '('); \
-    char *t2 = index(opstr + 1, '='); \
-    if(t2 && t2 < t1) { \
-        memcpy(buf, t2 + 1, t1 - t2 - 1); \
-        buf[t1 - t2 - 1] = '\0'; \
+    char *_ot1_ = index(opstr + 1, '('); \
+    char *_ot2_ = index(opstr + 1, '='); \
+    if(_ot2_ && _ot2_ < _ot1_) { \
+        memcpy(buf, _ot2_ + 1, _ot1_ - _ot2_ - 1); \
+        buf[_ot1_ - _ot2_ - 1] = '\0'; \
     } else { \
-        memcpy(buf, opstr, t1 - opstr); \
-        buf[t1 - opstr] = '\0'; \
+        memcpy(buf, opstr, _ot1_ - opstr); \
+        buf[_ot1_ - opstr] = '\0'; \
     } \
 } while(0)
 
@@ -199,28 +190,40 @@ typedef uint8_t  u64_t;
     call; \
 })
 
-#define CALL(call, ...) ({ \
-    int _r_ = 1; \
+#define CALL(call, log_level, ...) ({ \
+    int _rcl_ = 1; \
     char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
-    int eno = errno; \
+    int _eno_ = errno; \
     OPNAME(_c_, #call); \
     Snprintf(_b_, sizeof(_b_), "%s:", _c_); \
     Snprintf(&_b_[strlen(_b_)], sizeof(_b_) - strlen(_b_), __VA_ARGS__); \
     log_trace(_b_); \
     if(!(call)) { \
-        _r_ = 0; \
-        eno = errno; \
-        if(eno > 0) { log_error("%s"PRErrFMT, _b_, PRErrVAL); } \
-        else{ log_error("%s", _b_); } \
+        _rcl_ = 0; \
+        _eno_ = errno; \
+        if(_eno_ > 0) { LOG_MSG(log_level, "%s"PRErrFMT, _b_, PRErrVAL); } \
+        else{ LOG_MSG(log_level, "%s", _b_); } \
     } \
-    errno = eno; \
-    _r_; \
+    errno = _eno_; \
+    _rcl_; \
+})
+
+#define CALL_WRN(call, ...) ({ \
+    CALL(call, L_WARN, __VA_ARGS__); \
+})
+
+#define CALL_ERR(call, ...) ({ \
+    int _rce_ = CALL(call, L_ERROR, __VA_ARGS__); \
+    if(!_rce_) { \
+        OUT_SET(OUT_ER()); \
+    } \
+    _rce_; \
 })
 
 #define CALL_OUT(call, ...) do { \
-    int r = CALL(call, __VA_ARGS__); \
-    if(!r) { \
-        _out_code_ = -1; \
+    int _rcc_ = CALL(call, L_ERROR, __VA_ARGS__); \
+    if(!_rcc_) { \
+        OUT_SET(OUT_ER()); \
         goto _out; \
     } \
 } while(0)
