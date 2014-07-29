@@ -181,6 +181,7 @@ typedef uint8_t  u64_t;
     } \
 } while(0)
 
+#ifdef DEBUG
 #define TRACE(call, ...) ({ \
     char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
     OPNAME(_c_, #call); \
@@ -207,6 +208,23 @@ typedef uint8_t  u64_t;
     errno = _eno_; \
     _rcl_; \
 })
+#else
+#define TRACE(call, ...) call
+
+#define CALL(call, log_level, ...) ({ \
+    int _rcl_ = 1; \
+    if(!(call)) { \
+        char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
+        OPNAME(_c_, #call); \
+        Snprintf(_b_, sizeof(_b_), "%s:", _c_); \
+        Snprintf(&_b_[strlen(_b_)], sizeof(_b_) - strlen(_b_), __VA_ARGS__); \
+        _rcl_ = 0; \
+        if(errno > 0) { LOG_MSG(log_level, "%s"PRErrFMT, _b_, PRErrVAL); } \
+        else{ LOG_MSG(log_level, "%s", _b_); } \
+    } \
+    _rcl_; \
+})
+#endif
 
 #define CALL_WRN(call, ...) ({ \
     CALL(call, L_WARN, __VA_ARGS__); \
