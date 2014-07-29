@@ -64,19 +64,20 @@ typedef uint8_t  u64_t;
 #define NOP 
 
 #define PRErrFMT    ",strerror(%d):%s"
-#define PRErrVAL    errno, strerror(errno)
+#define PRErrVAL    errno, (errno > 0 ? strerror(errno) : "")
 #define PRStrFMT    "size=%lu,str=%s"
 #define PRStrVAL(s) strlen(s),s
 
 /********************************************************
 ** string operation
 *********************************************************/
-#define Snprintf(str, size, ...) do{ \
-    int c = snprintf(str, (size), __VA_ARGS__); \
-    if(c >= (int)(size)) { \
+#define Snprintf(str, size, ...) ({ \
+    int _snp_c_ = snprintf(str, (size), __VA_ARGS__); \
+    if(_snp_c_ >= (int)(size)) { \
         log_warn("String truncated"); \
     } \
-} while(0)
+    _snp_c_; \
+})
 
 /* concat to different buf each time */
 #define CONCAT(dest, ...) \
@@ -141,15 +142,6 @@ typedef uint8_t  u64_t;
 #define OUT_ER() (_out_code_ != 0)
 #define OUT_SET(code) (_out_code_ = (code))
 
-#define CHK_OUT(expr, ...) do{ \
-    log_trace(__VA_ARGS__); \
-    if(!(expr)) { \
-        OUT_SET(OUT_ER()); \
-        LOG_MSG(L_ERROR, __VA_ARGS__); \
-        goto _out; \
-    } \
-}while(0)
-
 #define LOG_IF_FAIL(expr, log_level, ...) do{ \
     if(!(expr)) { \
         LOG_MSG(log_level, __VA_ARGS__); \
@@ -208,6 +200,24 @@ typedef uint8_t  u64_t;
     errno = _eno_; \
     _rcl_; \
 })
+
+#define CHK_OUT(expr, ...) do{ \
+    int _co_eno_ = errno; \
+    log_trace(__VA_ARGS__); \
+    if(!(expr)) { \
+        OUT_SET(OUT_ER()); \
+        char _co_b_[MID_BUF_SIZE]; \
+        int _co_c_ = Snprintf(_co_b_, sizeof(_co_b_), __VA_ARGS__); \
+        if(_co_c_ < (int)sizeof(_co_b_) && _co_eno_ > 0) { \
+            Snprintf(&_co_b_[_co_c_], sizeof(_co_b_) - _co_c_, PRErrFMT, PRErrVAL); \
+        } \
+        LOG_MSG(L_ERROR, _co_b_); \
+        errno = _co_eno_; \
+        goto _out; \
+    } \
+    errno = _co_eno_; \
+}while(0)
+
 #else
 #define TRACE(call, ...) call
 
@@ -224,6 +234,23 @@ typedef uint8_t  u64_t;
     } \
     _rcl_; \
 })
+
+#define CHK_OUT(expr, ...) do{ \
+    int _co_eno_ = errno; \
+    if(!(expr)) { \
+        OUT_SET(OUT_ER()); \
+        char _co_b_[MID_BUF_SIZE]; \
+        int _co_c_ = Snprintf(_co_b_, sizeof(_co_b_), __VA_ARGS__); \
+        if(_co_c_ < (int)sizeof(_co_b_) && _co_eno_ > 0) { \
+            Snprintf(&_co_b_[_co_c_], sizeof(_co_b_) - _co_c_, PRErrFMT, PRErrVAL); \
+        } \
+        LOG_MSG(L_ERROR, _co_b_); \
+        errno = _co_eno_; \
+        goto _out; \
+    } \
+    errno = _co_eno_; \
+}while(0)
+
 #endif
 
 #define CALL_WRN(call, ...) ({ \
