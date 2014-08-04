@@ -11,36 +11,37 @@
 #include <unistd.h>
 
 #ifndef FOR_UNIT_TEST
-#include "log.h"
+#include "prod_inc.h"
 #else
-
-/* Log function */
 #define log_wrap(...) do{ \
     time_t t_; \
     struct tm lt; \
     char tm_s[LTL_BUF_SIZE]; \
     time(&t_); \
     strftime(tm_s, sizeof(tm_s), "%Y-%m-%d %H:%M:%S", localtime_r(&t_, &lt)); \
-    printf("%s,%s:%d,%s,thread[%ld],", tm_s, __FILE__, __LINE__, __func__, syscall(SYS_gettid)); \
-    printf(__VA_ARGS__); \
-    printf("\n"); \
+    fprintf(stderr, "%s,%s:%d,%s,thread[%ld],", tm_s, __FILE__, __LINE__, __func__, syscall(SYS_gettid)); \
+    fprintf(stderr, __VA_ARGS__); \
+    fprintf(stderr, "\n"); \
+    fflush(stderr); \
 } while(0)
 
-#define log_trace printf("[TRACE] "); log_wrap
-#define log_debug printf("[DEBUG] "); log_wrap
-#define log_info  printf("[INFO] ");  log_wrap
-#define log_warn  printf("[WARN] ");  log_wrap
-#define log_error printf("[ERROR] "); log_wrap
-#define log_fatal printf("[FATAL] "); log_wrap
+#define log_trace  fprintf(stderr, "[TRACE] ");  log_wrap
+#define log_debug  fprintf(stderr, "[DEBUG] ");  log_wrap
+#define log_info   fprintf(stderr, "[INFO] ");   log_wrap
+#define log_warn   fprintf(stderr, "[WARN] ");   log_wrap
+#define log_error  fprintf(stderr, "[ERROR] ");  log_wrap
+#define log_fatal  fprintf(stderr, "[FATAL] ");  log_wrap
+#define log_prompt fprintf(stderr, "[PROMPT] "); log_wrap
 #endif
 
-#ifndef DEBUG
-#undef  log_trace
-#define log_trace(...)
-#else
+#ifndef NDEBUG
 #ifndef log_trace
-#define log_trace log_debug
+#define log_trace(...)
 #endif
+#endif
+
+#ifndef log_prompt
+#define log_prompt log_warn
 #endif
 
 typedef enum { TRUE = 1, FALSE = 0} BOOL;
@@ -161,41 +162,43 @@ typedef uint8_t  u64_t;
 ** or
 ** "(rc = opname(arg1, arg2)) != -1"
 */
-#define OPNAME(buf, opstr) do { \
-    char *_ot1_ = index(opstr + 1, '('); \
-    char *_ot2_ = index(opstr + 1, '='); \
+#define OPNAME(_opn_buf_, opstr) do { \
+    const char *_ot1_ = index(opstr + 1, '('); \
+    const char *_ot2_ = index(opstr + 1, '='); \
     if(_ot2_ && _ot2_ < _ot1_) { \
-        memcpy(buf, _ot2_ + 1, _ot1_ - _ot2_ - 1); \
-        buf[_ot1_ - _ot2_ - 1] = '\0'; \
+        memcpy(_opn_buf_, _ot2_ + 1, _ot1_ - _ot2_ - 1); \
+        _opn_buf_[_ot1_ - _ot2_ - 1] = '\0'; \
     } else { \
-        memcpy(buf, opstr, _ot1_ - opstr); \
-        buf[_ot1_ - opstr] = '\0'; \
+        memcpy(_opn_buf_, opstr, _ot1_ - opstr); \
+        _opn_buf_[_ot1_ - opstr] = '\0'; \
     } \
 } while(0)
 
-#ifdef DEBUG
-#define TRACE(call, ...) ({ \
+#define LOG_CALL(call, lvl, ...) ({ \
     char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
     OPNAME(_c_, #call); \
     Snprintf(_b_, sizeof(_b_), "%s:", _c_); \
     Snprintf(&_b_[strlen(_b_)], sizeof(_b_) - strlen(_b_), __VA_ARGS__); \
-    log_trace(_b_); \
+    LOG_MSG(lvl, _b_); \
     call; \
 })
 
-#define CALL(call, log_level, ...) ({ \
+#ifndef NDEBUG
+#define TRACE(call, ...) LOG_CALL(call, L_TRACE, __VA_ARGS__)
+
+#define CALL(call, lvl, ab_lvl, ...) ({ \
     int _rcl_ = 1; \
     char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
     int _eno_ = errno; \
     OPNAME(_c_, #call); \
     Snprintf(_b_, sizeof(_b_), "%s:", _c_); \
     Snprintf(&_b_[strlen(_b_)], sizeof(_b_) - strlen(_b_), __VA_ARGS__); \
-    log_trace(_b_); \
+    LOG_MSG(lvl, _b_); \
     if(!(call)) { \
         _rcl_ = 0; \
         _eno_ = errno; \
-        if(_eno_ > 0) { LOG_MSG(log_level, "%s"PRErrFMT, _b_, PRErrVAL); } \
-        else{ LOG_MSG(log_level, "%s", _b_); } \
+        if(_eno_ > 0) { LOG_MSG(ab_lvl, "%s"PRErrFMT, _b_, PRErrVAL); } \
+        else{ LOG_MSG(ab_lvl, "%s", _b_); } \
     } \
     errno = _eno_; \
     _rcl_; \
@@ -221,7 +224,7 @@ typedef uint8_t  u64_t;
 #else
 #define TRACE(call, ...) call
 
-#define CALL(call, log_level, ...) ({ \
+#define CALL(call, lvl, ab_lvl, ...) ({ \
     int _rcl_ = 1; \
     if(!(call)) { \
         char _c_[LTL_BUF_SIZE], _b_[MID_BUF_SIZE]; \
@@ -229,8 +232,8 @@ typedef uint8_t  u64_t;
         Snprintf(_b_, sizeof(_b_), "%s:", _c_); \
         Snprintf(&_b_[strlen(_b_)], sizeof(_b_) - strlen(_b_), __VA_ARGS__); \
         _rcl_ = 0; \
-        if(errno > 0) { LOG_MSG(log_level, "%s"PRErrFMT, _b_, PRErrVAL); } \
-        else{ LOG_MSG(log_level, "%s", _b_); } \
+        if(errno > 0) { LOG_MSG(ab_lvl, "%s"PRErrFMT, _b_, PRErrVAL); } \
+        else{ LOG_MSG(ab_lvl, "%s", _b_); } \
     } \
     _rcl_; \
 })
@@ -253,25 +256,37 @@ typedef uint8_t  u64_t;
 
 #endif
 
-#define CALL_WRN(call, ...) ({ \
-    CALL(call, L_WARN, __VA_ARGS__); \
+#define CALL_WRN(call, lvl, ...) ({ \
+    CALL(call, lvl, L_WARN, __VA_ARGS__); \
 })
 
-#define CALL_ERR(call, ...) ({ \
-    int _rce_ = CALL(call, L_ERROR, __VA_ARGS__); \
+#define CALL_ERR(call, lvl, ...) ({ \
+    int _rce_ = CALL(call, lvl, L_ERROR, __VA_ARGS__); \
     if(!_rce_) { \
         OUT_SET(OUT_ER()); \
     } \
     _rce_; \
 })
 
-#define CALL_OUT(call, ...) do { \
-    int _rcc_ = CALL(call, L_ERROR, __VA_ARGS__); \
+#define CALL_OUT(call, lvl, ...) do { \
+    int _rcc_ = CALL(call, lvl, L_ERROR, __VA_ARGS__); \
     if(!_rcc_) { \
         OUT_SET(OUT_ER()); \
         goto _out; \
     } \
 } while(0)
+
+#define TRACE_WRN(call, ...) CALL_WRN(call, L_TRACE, __VA_ARGS__)
+#define TRACE_ERR(call, ...) CALL_ERR(call, L_TRACE, __VA_ARGS__)
+#define TRACE_OUT(call, ...) CALL_OUT(call, L_TRACE, __VA_ARGS__)
+
+#define DEBUG_WRN(call, ...) CALL_WRN(call, L_DEBUG, __VA_ARGS__)
+#define DEBUG_ERR(call, ...) CALL_ERR(call, L_DEBUG, __VA_ARGS__)
+#define DEBUG_OUT(call, ...) CALL_OUT(call, L_DEBUG, __VA_ARGS__)
+
+#define INFO_WRN(call, ...) CALL_WRN(call, L_INFO, __VA_ARGS__)
+#define INFO_ERR(call, ...) CALL_ERR(call, L_INFO, __VA_ARGS__)
+#define INFO_OUT(call, ...) CALL_OUT(call, L_INFO, __VA_ARGS__)
 
 /*******************************************************
 **  atomic, lock free operation
@@ -293,12 +308,8 @@ typedef uint8_t  u64_t;
 /*******************************************************
 **  memory operation
 ********************************************************/ 
-#ifdef DEBUG
-#define _malloc_  malloc
-#define _realloc_ realloc
-#define _free_    free
-#define _strdup_  strdup
-#define _strndup_ strndup
+#ifndef FOR_UNIT_TEST
+#include "prod_inc.h"
 #else
 #define _malloc_  malloc
 #define _realloc_ realloc
