@@ -34,10 +34,13 @@
 #define log_prompt fprintf(stderr, "[PROMPT] "); log_wrap
 #endif
 
-#ifndef NDEBUG
+#ifndef NTRACE
 #ifndef log_trace
 #define log_trace(...)
 #endif
+#else
+#undef  log_trace
+#define log_trace(...)
 #endif
 
 #ifndef log_prompt
@@ -183,7 +186,7 @@ typedef uint8_t  u64_t;
     call; \
 })
 
-#ifndef NDEBUG
+#ifndef NTRACE
 #define TRACE(call, ...) LOG_CALL(call, L_TRACE, __VA_ARGS__)
 
 #define CALL(call, lvl, ab_lvl, ...) ({ \
